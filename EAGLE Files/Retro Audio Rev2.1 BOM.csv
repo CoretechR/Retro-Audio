@@ -36,12 +36,8 @@ Qty,Value,Device,Package,Parts,Description,MPN,Supplier,Link
 1,PEC11,ENCODER_PLUS_SWITCH_BOURNS_PEC11,PEC11+SWITCH,SW5,Rotary Encoder with Built-In Switch,EC12E20-24P24C-SW,SRPassives,https://www.tme.eu/de/details/ec12e20-24p24c-sw/inkrementale-encoder/sr-passives/
 1,RESET,MOMENTARY-SWITCH-SPST-2-SMD-4.6X2.8MM,TACTILE_SWITCH_SMD_4.6X2.8MM,S1,Momentary Switch (Pushbutton) - SPST - Two Circuits,KMR211GLFS,C&K,https://www.mouser.de/ProductDetail/611-KMR211G-LFS
 1,USD_CONNECTOR,USD_CONNECTOR,MICRO-SD-SOCKET-PP,JP3,microSD Socket,MEM2061-01-188-00-A,GCT,https://www.mouser.de/ProductDetail/640-MEM20610118800A
-1,\!0.01uF,CAP_CERAMIC0603_NO,0603-NO,C1,Ceramic Capacitors,,,
-2,\!300k,R-US_R0603,R0603,R12; R15,RESISTOR; American symbol,,,
-,,,,,,,,
 ,,,,,,,,
 Extra components that are not part of the PCB:,,,,,,,,
-,,,,,,,,
 3,,Sparkfun Keycaps,,,,PRT-15305,Sparkfun,https://www.mouser.de/ProductDetail/474-PRT-15305
 1,,Keystone Battery Holder,,,,2478,Keystone,https://www.mouser.de/ProductDetail/534-2478
 1,,Speaker,,,,CDS-40304-L100,CUI Devices,https://www.mouser.de/ProductDetail/490-CDS-40304-L100
