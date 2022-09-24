@@ -7544,6 +7544,7 @@ You are welcome to use this library for commercial purposes. For attribution, we
 <attributes>
 </attributes>
 <variantdefs>
+<variantdef name="Standard" current="yes"/>
 </variantdefs>
 <classes>
 <class number="0" name="default" width="0" drill="0">
@@ -7613,7 +7614,9 @@ You are welcome to use this library for commercial purposes. For attribution, we
 <part name="JP3" library="SparkFun-Connectors" deviceset="USD_CONNECTOR" device=""/>
 <part name="X2" library="microbuilder" deviceset="AUDIO_3.5MMJACK" device="" value="19269"/>
 <part name="SUPPLY1" library="SparkFun-PowerSymbols" deviceset="3.3V" device=""/>
-<part name="C1" library="microbuilder" deviceset="CAP_CERAMIC" device="0603_NO" value="\!0.01uF"/>
+<part name="C1" library="microbuilder" deviceset="CAP_CERAMIC" device="0603_NO" value="0.01uF">
+<variant name="Standard" populate="no"/>
+</part>
 <part name="GND1" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="SW1" library="adafruit" deviceset="OS102011MA1Q" device=""/>
 <part name="SUPPLY6" library="SparkFun-Aesthetics" deviceset="3.3V" device=""/>
@@ -7624,8 +7627,12 @@ You are welcome to use this library for commercial purposes. For attribution, we
 <part name="GND12" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="GND15" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="R21" library="adafruit" deviceset="R-US_" device="R0603" value="1M"/>
-<part name="R12" library="adafruit" deviceset="R-US_" device="R0603" value="\!300k"/>
-<part name="R15" library="adafruit" deviceset="R-US_" device="R0603" value="\!300k"/>
+<part name="R12" library="adafruit" deviceset="R-US_" device="R0603" value="300k">
+<variant name="Standard" populate="no"/>
+</part>
+<part name="R15" library="adafruit" deviceset="R-US_" device="R0603" value="300k">
+<variant name="Standard" populate="no"/>
+</part>
 <part name="GND18" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="Q3" library="microbuilder" deviceset="MOSFET-P" device="TO252" value="AOD417"/>
 <part name="SUPPLY7" library="SparkFun-Aesthetics" deviceset="V_BATT" device=""/>
