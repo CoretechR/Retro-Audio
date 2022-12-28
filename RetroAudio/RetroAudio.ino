@@ -1,5 +1,4 @@
-// 2022 Maximilian Kern
-// Tested with ESP32 Core V1.0.6
+// 2022 Maximilian Kern		
 #include <Arduino.h>
 #include <JC_Button.h> // https://github.com/JChristensen/Button
 #include "Audio.h" // https://github.com/schreibfaul1/ESP32-audioI2S
@@ -7,10 +6,10 @@
 #include "SD.h"
 #include "FS.h"
 #include <TFT_eSPI.h> // Hardware-specific library
-//#include "WiFiMulti.h"
 
 #define BLACK 0
 #define WHITE 1
+
 #define LIGHTGREEN 0x05AE
 #define DARKGREEN  0x022B
 #define LIGHTPINK  0xC169
@@ -30,7 +29,7 @@
 #define SD_MISO      19
 #define SD_SCK       18
 
-//#define LCD_DC       16 // defined within TFT_eSPI User_Setup.h
+//#define LCD_DC       16 // defined in TFT_eSPI User_Setup.h
 //#define LCD_CS       15
 //#define LCD_MOSI     13
 //#define LCD_SCK      14
@@ -57,14 +56,9 @@ TFT_eSprite img = TFT_eSprite(&tft);
 unsigned int spriteX = 118; //Tape animation sprite size
 const int tapePosY = 84; //Tape animation Y Center Position
 
-
 Audio audio;
-// Audio position and duration for UI etc.
-unsigned long currentPos;
-unsigned long audioDuration;
-boolean positionChanged = true;
 boolean _f_eof = false;
-unsigned long savePosFlag;
+unsigned long savePosFlag = 60000;
 
 int volume_hp = 1;
 int volume_spk = 3;
@@ -78,7 +72,6 @@ unsigned int trackTotal = 0;
 int currentTrackNum = 0;
 String currentTitle;
 String currentArtist;
-boolean audioIsPlaying = false;
 
 boolean headphones = true;
 
@@ -87,203 +80,14 @@ unsigned int batteryVoltageMilliVolts;
 #define batteryVoltageBad 4000
 boolean batteryLow = false;
 
+// Power saving
+boolean screenOff = false;
+unsigned int screenOffTime = 15000;
+unsigned long screenOffFlag = screenOffTime;
+
 // interrupt service routine vars
 boolean A_set = false;            
 boolean B_set = false;
-
-/*
-WiFiMulti wifiMulti;
-String ssid = "";
-String password = "";
-*/
-
-//****************************************************************************************
-//                                   A U D I O _ T A S K                                 *
-//****************************************************************************************
-
-struct audioMessage{
-    uint8_t     cmd;
-    const char* txt;
-    uint32_t    value;
-    uint32_t    ret;
-} audioTxMessage, audioRxMessage;
-
-enum : uint8_t { SET_VOLUME, GET_VOLUME, CONNECTTOHOST, CONNECTTOSD, PAUSE_RESUME, GET_DURATION, GET_POSITION, SET_POSITION, SET_OFFSET };
-
-QueueHandle_t audioSetQueue = NULL;
-QueueHandle_t audioGetQueue = NULL;
-
-void CreateQueues(){
-    audioSetQueue = xQueueCreate(10, sizeof(struct audioMessage));
-    audioGetQueue = xQueueCreate(10, sizeof(struct audioMessage));
-}
-
-void audioTask(void *parameter) {
-    CreateQueues();
-    if(!audioSetQueue || !audioGetQueue){
-        log_e("queues are not initialized");
-        while(true){;}  // endless loop
-    }
-
-    struct audioMessage audioRxTaskMessage;
-    struct audioMessage audioTxTaskMessage;
-
-    audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-    audio.setVolume(0); // 0...21
-
-    while(true){
-        if(xQueueReceive(audioSetQueue, &audioRxTaskMessage, 1) == pdPASS) {
-            if(audioRxTaskMessage.cmd == SET_VOLUME){
-                audioTxTaskMessage.cmd = SET_VOLUME;
-                audio.setVolume(audioRxTaskMessage.value);
-                audioTxTaskMessage.ret = 1;
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == CONNECTTOHOST){
-                audioTxTaskMessage.cmd = CONNECTTOHOST;
-                audioTxTaskMessage.ret = audio.connecttohost(audioRxTaskMessage.txt);
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == CONNECTTOSD){
-                audioTxTaskMessage.cmd = CONNECTTOSD;
-                audio.stopSong(); // free memory
-                audioTxTaskMessage.ret = audio.connecttoSD(audioRxTaskMessage.txt, audioRxTaskMessage.value);
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == GET_VOLUME){
-                audioTxTaskMessage.cmd = GET_VOLUME;
-                audioTxTaskMessage.ret = audio.getVolume();
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == GET_POSITION){
-                audioTxTaskMessage.cmd = GET_POSITION;
-                audioTxTaskMessage.ret = audio.getAudioCurrentTime();
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == SET_POSITION){
-                audioTxTaskMessage.cmd = SET_POSITION;
-                audioTxTaskMessage.ret = audio.setAudioPlayPosition(audioRxTaskMessage.value);
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == GET_DURATION){
-                audioTxTaskMessage.cmd = GET_DURATION;
-                audioTxTaskMessage.ret = audio.getAudioFileDuration();
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == SET_OFFSET){
-                audioTxTaskMessage.cmd = SET_OFFSET;
-                audio.setTimeOffset(audioRxTaskMessage.value);
-                audioTxTaskMessage.ret = 1;
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else if(audioRxTaskMessage.cmd == PAUSE_RESUME){
-                audioTxTaskMessage.cmd = PAUSE_RESUME;
-                audioTxTaskMessage.ret = audio.pauseResume();
-                xQueueSend(audioGetQueue, &audioTxTaskMessage, portMAX_DELAY);
-            }
-            else{
-                log_i("error");
-            }
-        }
-        audio.loop();
-        // refresh audio track position
-        int newAudioPos = audio.getAudioCurrentTime();
-        if(currentPos != newAudioPos){
-          currentPos = newAudioPos;
-          positionChanged = true;
-        }
-        // refresh audio track duration
-        unsigned long newAudioDuraton = audio.getAudioFileDuration();
-        if(newAudioDuraton > 0 && audioDuration != newAudioDuraton){
-          audioDuration = audio.getAudioFileDuration();          
-        } 
-    }
-}
-
-void audioInit() {
-    xTaskCreatePinnedToCore(
-        audioTask,             /* Function to implement the task */
-        "audioplay",           /* Name of the task */
-        5000,                  /* Stack size in words */
-        NULL,                  /* Task input parameter */
-        2 | portPRIVILEGE_BIT, /* Priority of the task */
-        NULL,                  /* Task handle. */
-        1                      /* Core where the task should run */
-    );
-}
-
-audioMessage transmitReceive(audioMessage msg){
-    xQueueSend(audioSetQueue, &msg, portMAX_DELAY);
-    if(xQueueReceive(audioGetQueue, &audioRxMessage, portMAX_DELAY) == pdPASS){
-        if(msg.cmd != audioRxMessage.cmd){
-            log_e("wrong reply from message queue");
-        }
-    }
-    return audioRxMessage;
-}
-
-void audioSetVolume(uint8_t vol){
-    audioTxMessage.cmd = SET_VOLUME;
-    audioTxMessage.value = vol;
-    transmitReceive(audioTxMessage);
-}
-
-uint8_t audioGetVolume(){
-    audioTxMessage.cmd = GET_VOLUME;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    return RX.ret;
-}
-
-bool audioPauseResume(){
-    audioIsPlaying = !audioIsPlaying;
-    audioTxMessage.cmd = PAUSE_RESUME;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    return RX.ret;
-}
-
-bool audioConnecttohost(const char* host){
-    audioTxMessage.cmd = CONNECTTOHOST;
-    audioTxMessage.txt = host;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    audioIsPlaying = true;
-    return RX.ret;
-}
-
-bool audioConnecttoSD(const char* filename, unsigned long resumePos){
-    audioTxMessage.cmd = CONNECTTOSD;
-    audioTxMessage.txt = filename;
-    audioTxMessage.value = resumePos;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    audioIsPlaying = true;
-    savePosFlag = millis() + 600000; // save position only for files longer than 10min
-    return RX.ret;
-}
-
-uint32_t audioGetPosition(){
-    audioTxMessage.cmd = GET_POSITION;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    return RX.ret;
-}
-
-uint32_t audioSetPosition(unsigned int secPosition){
-    audioTxMessage.cmd = SET_POSITION;
-    audioTxMessage.value = secPosition;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    return RX.ret;
-}
-
-uint32_t audioGetDuration(){
-    audioTxMessage.cmd = GET_DURATION;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    return RX.ret;
-}
-
-bool audioSetOffset(int secOffset){
-    audioTxMessage.cmd = SET_OFFSET;
-    audioTxMessage.value = secOffset;
-    audioMessage RX = transmitReceive(audioTxMessage);
-    return RX.ret;
-}
 
 //****************************************************************************************
 //                                    HELPER FUNCTIONS                                   *
@@ -321,6 +125,22 @@ void IRAM_ATTR isr_encb(){
   }
 } 
 
+void turnScreenOff(boolean powerdown){
+  // low Power mode
+  if(powerdown){
+    digitalWrite(LCD_BL, LOW);  
+    //setCpuFrequencyMhz(80);
+    screenOff = true;
+  }
+  // high power mode
+  else {
+    digitalWrite(LCD_BL, HIGH);  
+    //setCpuFrequencyMhz(240);
+    screenOffFlag = millis() + screenOffTime;
+    screenOff = false;
+  }
+}
+
 void drawTitleInfo(){
   tft.setTextPadding(312-18);
   tft.setTextDatum(TL_DATUM);
@@ -333,6 +153,9 @@ void drawTitleInfo(){
 void drawProgressBar(){
   static int progressBar;
   const int progressBarWidth = 235;
+  unsigned long currentPos = audio.getAudioCurrentTime();
+  unsigned long audioDuration = audio.getAudioFileDuration();
+
   progressBar = map(currentPos, 0, audioDuration, 1, progressBarWidth); 
   progressBar = min(progressBar, progressBarWidth);
   tft.fillRect(10, 174, progressBar+1, 2, LIGHTPINK);
@@ -380,7 +203,7 @@ void scanSD(){
 String getSaveFileName(String audioFileName){
   String tempString = audioFileName;
   tempString.replace(audioFileName.c_str() + (audioFileName.length() - 4), ".txt");
-  tempString = "/persistence" + tempString;
+  tempString = "/persistence/" + tempString;
   return tempString;
 }
 
@@ -457,12 +280,51 @@ unsigned int restoreVolume(){
   return filePos;
 }
 
-//****************************************************************************************
-//                                          SETUP                                        *
-//****************************************************************************************
+void initGraphics(){  
+
+  //Draw Background
+  tft.fillRect(0, 0, 320, 240, 0x0000);
+  
+  tft.fillSmoothCircle(320-80, tapePosY, 72, 0xFFFF); //Outer circle
+  tft.fillSmoothCircle(320-80, tapePosY, 67, 0x0000, 0xFFFF);
+  tft.fillSmoothCircle(80, tapePosY, 72, 0xFFFF); //Outer circle
+  tft.fillSmoothCircle(80, tapePosY, 67, 0x0000, 0xFFFF);
+  tft.fillRect(80, tapePosY+68, 320-80-80, 5, 0xFFFF); 
+}
+
+void drawTapeSpools(){
+
+  img.fillSprite(TFT_TRANSPARENT);
+  img.fillCircle(59, 59, 59, 0x0000);
+  audio.loop();
+  static float angle = 0;  
+  static unsigned long oldMillis = millis();  
+  if(audio.isRunning()) angle -= float(millis() - oldMillis)/600;
+  oldMillis = millis();
+  for(int i = 1; i <= 3; i++){
+    audio.loop();
+    float angleOffset = i*TWO_PI/3;    
+    float s = sin(angle+angleOffset);
+    float c = cos(angle+angleOffset);
+    audio.loop();
+    img.drawWideLine(spriteX/2+(0*c-36*s), spriteX/2+(0*s+36*c), spriteX/2+(0*c-56*s), spriteX/2+(0*s+56*c), 5, 0xFFFF, 0x0000);
+    audio.loop();
+    s = sin(angle+angleOffset+1.0472);
+    c = cos(angle+angleOffset+1.0472);
+    img.drawWideLine(spriteX/2+(0*c-14*s), spriteX/2+(0*s+14*c), spriteX/2+(0*c-16*s), spriteX/2+(0*s+16*c), 5, 0xFFFF, 0x0000);    
+    audio.loop();
+  }
+  if(angle > 2*PI) angle = 0;
+  audio.loop();
+  img.fillSmoothCircle(spriteX/2, spriteX/2, 15, 0xFFFF); //Inner circle
+  img.fillSmoothCircle(spriteX/2, spriteX/2, 10, 0x0000, 0xFFFF);
+  audio.loop();
+  img.pushSprite(320-80-spriteX/2, tapePosY-spriteX/2, TFT_TRANSPARENT);
+  img.pushSprite(80-spriteX/2, tapePosY-spriteX/2, TFT_TRANSPARENT);
+}
 
 void setup() {
-  
+
   pinMode(LCD_BL, OUTPUT);
   pinMode(ABUT, INPUT);
   pinMode(BBUT, INPUT);
@@ -475,8 +337,9 @@ void setup() {
   attachInterrupt(ENCINTA, isr_enca, CHANGE);
   attachInterrupt(ENCINTB, isr_encb, CHANGE);
 
-  
+
   Serial.begin(115200);
+  Serial.println("gestartet!");
 
   tft.init();
   tft.setRotation(3);
@@ -486,39 +349,21 @@ void setup() {
 
   digitalWrite(SD_CS, HIGH);
   SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
-  SPI.setFrequency(20000000);
   SD.begin(SD_CS);
   scanSD();
   //create a folder to store save files
   if(!SD.exists("/persistence"))  SD.mkdir("/persistence");    
 
-  /*
-  WiFi.mode(WIFI_STA);
-  wifiMulti.addAP(ssid.c_str(), password.c_str());
-  wifiMulti.run();
-  if(WiFi.status() != WL_CONNECTED){
-      WiFi.disconnect(true);
-      wifiMulti.run();
-  }
-  */
-
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
   restoreVolume();
   
-  audioInit();
-  audioSetVolume(volume_hp);
-  //log_i("current volume is: %d", audioGetVolume());
-  //audioConnecttohost("https://edge05.live-sm.absolutradio.de/absolut-relax/stream/mp3");
-  //audioConnecttoSD("Windows XP.mp3");
-  audioConnecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  audio.setVolume(volume_hp);
 
-  //Draw Background
-  tft.fillRect(0, 0, 320, 240, 0x0000);
-  
-  tft.fillSmoothCircle(320-80, tapePosY, 72, 0xFFFF); //Outer circle
-  tft.fillSmoothCircle(320-80, tapePosY, 67, 0x0000, 0xFFFF);
-  tft.fillSmoothCircle(80, tapePosY, 72, 0xFFFF); //Outer circle
-  tft.fillSmoothCircle(80, tapePosY, 67, 0x0000, 0xFFFF);
-  tft.fillRect(80, tapePosY+68, 320-80-80, 5, 0xFFFF); 
+  audio.connecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));
+
+  //draw Background
+  initGraphics();
 
   // turn on display after initialization
   digitalWrite(LCD_BL, HIGH);  
@@ -526,29 +371,37 @@ void setup() {
   img.setColorDepth(8);  
   img.createSprite(spriteX, spriteX);
 
-  delay(200);
+  //delay(200);
+  /* Änderung für Hörbuch Modus
   audioPauseResume();
+  */
 }
 
-//****************************************************************************************
-//                                          LOOP                                         *
-//****************************************************************************************
+void loop()
+{
+  audio.loop();
 
-void loop() {
+  Serial.println(audio.getAudioCurrentTime());
+  
+  // Turn screen off after a timeout
+  if(!screenOff && millis() > screenOffFlag){
+    turnScreenOff(true);
+  }
 
+  
   //check battery
   batteryVoltageMilliVolts = 2*analogReadMilliVolts(VBAT_SENS);
   if(batteryVoltageMilliVolts < batteryVoltageBad && !batteryLow){
+    batteryLow = true;
     // draw low battery symbol
     tft.drawRect(WIDTH-15, HEIGHT-25, 10, 19, LIGHTPINK);
     tft.fillRect(WIDTH-13, HEIGHT-27, 6, 2, LIGHTPINK);
     tft.fillRect(WIDTH-13, HEIGHT-11, 6, 3, LIGHTPINK);
-    batteryLow = true;
   }
   else if(batteryVoltageMilliVolts > batteryVoltageGood && batteryLow){
+    batteryLow = false;
     // erase low battery symbol
     tft.fillRect(WIDTH-15, HEIGHT-27, 10, 21, TFT_BLACK);
-    batteryLow = false;
   }
   
   //check headphone jack
@@ -567,16 +420,17 @@ void loop() {
 
   // set volume and draw volume bar
   if(volumeChanged){
+    turnScreenOff(false);    
     int volumeBarWidth = 0;
     if(headphones){ 
-      audioSetVolume(volume_hp);
+      audio.setVolume(volume_hp);
       volumeBarWidth = map(volume_hp, 0, volume_hp_max, 0, 300);
     }
     else {
-      audioSetVolume(volume_spk);
+      audio.setVolume(volume_spk);
       volumeBarWidth = map(volume_spk, 0, volume_spk_max, 0, 300);
     }
-
+    
     tft.fillRect(10, 0, volumeBarWidth, 2, LIGHTGREEN);
     tft.fillRect(10+volumeBarWidth, 0, 300-volumeBarWidth, 2, DARKGREEN);
 
@@ -587,9 +441,9 @@ void loop() {
   
   // handle end of file
   if(_f_eof == true){
-    audioPauseResume();
+    audio.pauseResume();
     nextTrack(); //remove this line to repeat track
-    audioConnecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));
+    audio.connecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));
     _f_eof = false;
   }
 
@@ -601,71 +455,64 @@ void loop() {
   }
   
   // check if it's time to save the file position
-  if(millis() > savePosFlag && audioIsPlaying){    
+  if(millis() > savePosFlag && audio.isRunning()){    
     savePosition();
     savePosFlag = millis() + 60000; // set flag to save settings to 60 seconds from now
   }
   
-  // animate tape spools
-  img.fillSprite(TFT_TRANSPARENT);
-  img.fillCircle(59, 59, 59, 0x0000);
-    
-  static float angle = 0;  
-  static unsigned long oldMillis = millis();  
-  if(audioIsPlaying) angle -= float(millis() - oldMillis)/600;
-  oldMillis = millis();
-  for(int i = 1; i <= 3; i++){
-    float angleOffset = i*TWO_PI/3;    
-    float s = sin(angle+angleOffset);
-    float c = cos(angle+angleOffset);
-    img.drawWideLine(spriteX/2+(0*c-36*s), spriteX/2+(0*s+36*c), spriteX/2+(0*c-56*s), spriteX/2+(0*s+56*c), 5, 0xFFFF, 0x0000);
-    s = sin(angle+angleOffset+1.0472);
-    c = cos(angle+angleOffset+1.0472);
-    img.drawWideLine(spriteX/2+(0*c-14*s), spriteX/2+(0*s+14*c), spriteX/2+(0*c-16*s), spriteX/2+(0*s+16*c), 5, 0xFFFF, 0x0000);    
-  }
-  if(angle > 2*PI) angle = 0;
-  
-  img.fillSmoothCircle(spriteX/2, spriteX/2, 15, 0xFFFF); //Inner circle
-  img.fillSmoothCircle(spriteX/2, spriteX/2, 10, 0x0000, 0xFFFF);
-
-  img.pushSprite(320-80-spriteX/2, tapePosY-spriteX/2, TFT_TRANSPARENT);
-  img.pushSprite(80-spriteX/2, tapePosY-spriteX/2, TFT_TRANSPARENT);
+    // animate tape spools
+  drawTapeSpools();
   
   //draw progress bar
-  if(positionChanged){
-    drawProgressBar();
-    positionChanged = false;
-  }  
+  if(audio.isRunning())  drawProgressBar();
 
   if(buttonA.pressedFor(1000)){
-    audioSetOffset(-30);
+    turnScreenOff(false);    
+    audio.setTimeOffset(-30);
     buttonA.read();
   }
   else if(buttonA.wasReleased()){
+    turnScreenOff(false);    
     Serial.println("<<");
+    // Hörbuchmodus --- temporäre Änderung!!!
     prevTrack();
-    if(audioIsPlaying) audioPauseResume();
-    audioConnecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));
+    if(audio.isRunning()) audio.pauseResume();
+    audio.connecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum])); 
   }
   
   if(buttonB.pressedFor(1000)){
+    turnScreenOff(false);    
     Serial.println("long press pause");
     buttonB.read();
   }
   else if(buttonB.wasReleased()){
+    turnScreenOff(false);    
     Serial.println("pause");
-    audioPauseResume();
+    audio.pauseResume();
   }
   
   if(buttonC.pressedFor(1000)){
-    audioSetOffset(30);
+    turnScreenOff(false);    
+    audio.setTimeOffset(30);
     buttonC.read();
   }
   else if(buttonC.wasReleased()){
+    turnScreenOff(false);    
+    // Hörbuchmodus --- temporäre Änderung!!!
     Serial.println(">>");
     nextTrack();
-    if(audioIsPlaying) audioPauseResume();
-    audioConnecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));    
+    if(audio.isRunning()) audio.pauseResume();
+    audio.connecttoSD(tracks[currentTrackNum].c_str(), restorePosition(tracks[currentTrackNum]));
+  }
+  else if(buttonENC.wasReleased()){
+    turnScreenOff(false);
+    // Flip Screen
+    if(tft.getRotation() == 1) tft.setRotation(3);
+    else tft.setRotation(1);
+    initGraphics();
+    drawTapeSpools();
+    drawProgressBar();
+    drawTitleInfo();
   }  
 
   buttonA.read();
