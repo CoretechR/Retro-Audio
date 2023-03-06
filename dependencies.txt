@@ -1,0 +1,8 @@
+IDE used: Platformio
+
+libraries:
+jchristensen/JC_Button@^2.1.2
+esphome/ESP32-audioI2S@^2.1.0
+
+platform: espressif32 5.2.0
+(based on ESP32 IDF v4.4.2)
